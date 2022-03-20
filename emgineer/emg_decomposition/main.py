@@ -67,8 +67,8 @@ class EmeDecomposition():
     
     
     def _cashe_fastica(self, emg, cashe_name):
-        filepath = self.cashe + '/' + str(cashe_name) + '_fastica.pickle' 
         if self.cashe is not None:
+            filepath = self.cashe + '/' + str(cashe_name) + '_fastica.pickle' 
             if not(os.path.exists(filepath)):
                 self._FastICA.fit(emg)
                 with open(filepath, 'wb') as f:
@@ -76,18 +76,23 @@ class EmeDecomposition():
             else:
                 with open(filepath, 'rb') as f:
                     self._FastICA = pickle.load(f)
+        else:
+            self._FastICA.fit(emg)
     
     def _cashe_sil(self, emg_mu_squared, spike_trains, cashe_name):
-        filepath = self.cashe + '/' + str(cashe_name) + '_sil.json' 
-        if not(os.path.exists(filepath)):
-            valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
-            d= {'valid_index_mu': valid_index_mu, 'list_sil': list_sil}
-            with open(filepath, 'w') as f:
-                json.dump(d, f, indent=4)
+        if self.cashe is not None:
+            filepath = self.cashe + '/' + str(cashe_name) + '_sil.json' 
+            if not(os.path.exists(filepath)):
+                valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
+                d= {'valid_index_mu': valid_index_mu, 'list_sil': list_sil}
+                with open(filepath, 'w') as f:
+                    json.dump(d, f, indent=4)
+            else:
+                with open(filepath, 'rb') as f:
+                    d = json.load(f)
+                valid_index_mu, list_sil = d['valid_index_mu'], d['list_sil']
         else:
-            with open(filepath, 'rb') as f:
-                d = json.load(f)
-            valid_index_mu, list_sil = d['valid_index_mu'], d['list_sil']
+            valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
             
         return valid_index_mu, list_sil
             
@@ -123,7 +128,7 @@ class EmeDecomposition():
                     print('mu {} has no spike trains.'.format(i))
                 list_sil.append(0)
             else:
-                _sil = silhouette_score(emg_squared[:, [i]], spike_trains[:, i])
+                _sil = silhouette_score(emg_squared[:, [i]], spike_trains[:, i], random_state=self.random_state)
                 if flag_print:
                     print('mu {}: {}'.format(i, _sil))
                 list_sil.append(_sil)
