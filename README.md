@@ -15,3 +15,6 @@
 > ```
 > python setup.py develop
 > ```
+
+## License
+MIT
