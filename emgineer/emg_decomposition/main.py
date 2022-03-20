@@ -34,8 +34,10 @@ class EmeDecomposition():
                 os.mkdir(self.cashe)
         
     def fit(self, emg_raw, cashe_name='all', flag_return=False):
+        # extend
+        emg_extended = self._extend_emg(emg_raw)
         # preprocess
-        emg_centered = self._centering(emg_raw)
+        emg_centered = self._centering(emg_extended)
         # fastica
         self._cashe_fastica(emg_centered, cashe_name)
         emg_mu = self._FastICA.transform(emg_centered)
@@ -51,8 +53,10 @@ class EmeDecomposition():
             return st_valid, emg_mu_valid
         
     def transform(self, emg_raw):
+        # extend
+        emg_extended = self._extend_emg(emg_raw)
         # preprocess
-        emg_centered = self._centering(emg_raw)
+        emg_centered = self._centering(emg_extended)
         emg_mu = self._FastICA.transform(emg_centered)
         # peak detection
         emg_mu_squared = np.square(emg_mu)
@@ -64,6 +68,10 @@ class EmeDecomposition():
     
     def fit_transfrom(self, emg_raw, cashe_name='all'):
         return self.fit(emg_raw, cashe_name=cashe_name, flag_return=True)
+    
+    def _extend_emg(self, emg_raw):
+        df_emg_raw = pd.DataFrame(emg_raw)
+        return pd.concat([df_emg_raw] + [df_emg_raw.shift(-x) for x in range(self.n_delayed)], axis=1).dropna()
     
     
     def _cashe_fastica(self, emg, cashe_name):
