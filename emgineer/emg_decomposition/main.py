@@ -1,3 +1,4 @@
+from xmlrpc.client import Boolean, boolean
 import pandas as pd
 import numpy as np
 from sklearn.decomposition import FastICA
@@ -15,7 +16,8 @@ class EmeDecomposition():
                  random_state: int=None,
                  max_iter: int=200,
                  tol: float=1e-4,
-                 cashe: str or None=None):
+                 cashe: str or None=None,
+                 flag_sil: bool=True):
         self.n_motor_unit = n_motor_unit
         self.n_delayed = n_delayed
         self.threshold_sil = threshold_sil
@@ -35,41 +37,46 @@ class EmeDecomposition():
             if not os.path.exists(self.cashe):
                 os.mkdir(self.cashe)
         
-    def fit(self, emg_raw, cashe_name='all', flag_return=False):
-        # extend
-        emg_extended = self._extend_emg(emg_raw)
-        # preprocess
-        emg_centered = self._centering(emg_extended)
-        # fastica
-        self._cashe_fastica(emg_centered, cashe_name)
-        emg_mu = self._FastICA.transform(emg_centered)
-        # peak detection
-        emg_mu_squared = np.square(emg_mu)
-        spike_trains = self._EmgMu2spikeTrain(emg_mu_squared)
-        # calculate SIL
-        self.valid_index_mu_, self.list_sil_ = self._cashe_sil(emg_mu_squared, spike_trains, cashe_name)
-        # valid data
-        if flag_return:
-            st_valid = spike_trains[:, self.valid_index_mu_]
-            emg_mu_valid = emg_mu_squared[:, self.valid_index_mu_]
-            return st_valid, emg_mu_valid
+        self.flag_sil = flag_sil
+        
+    def fit(self, emg_raw, cashe_name='all', _transform=False):
+        emg_preprocessed = self._preprocess(emg_raw)
+        return self._decomposition(emg_preprocessed, cashe_name, _fit=True, _transform=_transform)
         
     def transform(self, emg_raw):
+        emg_preprocessed = self._preprocess(emg_raw)
+        return self._decomposition(emg_preprocessed, cashe_name=None, _fit=False, _transform=True)
+    
+    def _preprocess(self, emg_raw):
         # extend
         emg_extended = self._extend_emg(emg_raw)
         # preprocess
         emg_centered = self._centering(emg_extended)
-        emg_mu = self._FastICA.transform(emg_centered)
-        # peak detection
-        emg_mu_squared = np.square(emg_mu)
-        spike_trains = self._EmgMu2spikeTrain(emg_mu_squared)
-        # valid data
-        st_valid = spike_trains[:, self.valid_index_mu_]
-        emg_mu_valid = emg_mu_squared[:, self.valid_index_mu_]
-        return st_valid, emg_mu_valid
+        return emg_centered
     
-    def fit_transfrom(self, emg_raw, cashe_name='all'):
-        return self.fit(emg_raw, cashe_name=cashe_name, flag_return=True)
+    def _decomposition(self, emg_preprocessed, cashe_name, _fit=True, _transform=True):
+        # fastica
+        if _fit:
+            self._cashe_fastica(emg_preprocessed, cashe_name)
+        emg_mu = self._FastICA.transform(emg_preprocessed)
+        # peak detection
+        if self.flag_sil or _transform:
+            emg_mu_squared = np.square(emg_mu)
+            spike_trains = self._EmgMu2spikeTrain(emg_mu_squared)
+        # calculate SIL
+        if self.flag_sil and _fit:
+            self.valid_index_mu_, self.list_sil_ = self._cashe_sil(emg_mu_squared, spike_trains, cashe_name)
+        # valid data
+        if _transform:
+            if not(self.flag_sil):
+                return emg_mu, spike_trains
+            else:
+                st_valid = spike_trains[:, self.valid_index_mu_]
+                emg_mu_valid = emg_mu[:, self.valid_index_mu_]
+                return st_valid, emg_mu_valid
+    
+    def fit_transform(self, emg_raw, cashe_name='all'):
+        return self.fit(emg_raw, cashe_name=cashe_name, _transform=True)
     
     def _extend_emg(self, emg_raw):
         df_emg_raw = pd.DataFrame(emg_raw)
