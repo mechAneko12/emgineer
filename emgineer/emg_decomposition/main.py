@@ -11,12 +11,14 @@ class EmeDecomposition():
     def __init__(self, 
                  n_motor_unit: int,
                  n_delayed: int=8,
+                 threshold_sil: float=0.8,
                  random_state: int=None,
                  max_iter: int=200,
                  tol: float=1e-4,
                  cashe: str or None=None):
         self.n_motor_unit = n_motor_unit
         self.n_delayed = n_delayed
+        self.threshold_sil = threshold_sil
         self.random_state = random_state
         self._FastICA = FastICA(n_components=n_motor_unit,
                                 random_state=self.random_state,
@@ -91,7 +93,7 @@ class EmeDecomposition():
         if self.cashe is not None:
             filepath = self.cashe + '/' + str(cashe_name) + '_sil.json' 
             if not(os.path.exists(filepath)):
-                valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
+                valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains, self.threshold_sil)
                 d= {'valid_index_mu': valid_index_mu, 'list_sil': list_sil}
                 with open(filepath, 'w') as f:
                     json.dump(d, f, indent=4)
@@ -100,7 +102,7 @@ class EmeDecomposition():
                     d = json.load(f)
                 valid_index_mu, list_sil = d['valid_index_mu'], d['list_sil']
         else:
-            valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
+            valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains, self.threshold_sil)
             
         return valid_index_mu, list_sil
             
@@ -127,18 +129,14 @@ class EmeDecomposition():
         
         return spike_trains * pre_diff.values * post_diff.values
     
-    def _sil(self, emg_squared, spike_trains, thre_sil=0.75, flag_print=False):
+    def _sil(self, emg_squared, spike_trains, thre_sil):
         list_sil = []
         for i in range(emg_squared.shape[1]):
             # ignore mu that has no spike trains
             if np.unique(spike_trains[:, i]).shape[0] != 2:
-                if flag_print:
-                    print('mu {} has no spike trains.'.format(i))
                 list_sil.append(0)
             else:
                 _sil = silhouette_score(emg_squared[:, [i]], spike_trains[:, i], random_state=self.random_state)
-                if flag_print:
-                    print('mu {}: {}'.format(i, _sil))
                 list_sil.append(_sil)
                 
         return np.where(np.array(list_sil) >= thre_sil)[0].tolist(), list_sil
