@@ -6,8 +6,16 @@
 > This has lots of tools: EMG decomposition, plot spike trains and etc.
 
 ## Usage
+> ```
+> import emgineer
+> ```
 > ### EMG decomposition
-> - blah blah bla
+> ```
+> est = emgineer.EmgDecomposition(n_motor_unit)
+> data = {ndarray shape of (n_samples, n_signals)}
+> est.fit(data)
+> st_valid, emg_mu_valid = est.transform(data)
+> ```
 > ### plot spike trains
 > - blah blah bla
 

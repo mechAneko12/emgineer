@@ -1,3 +1,4 @@
+from xmlrpc.client import Boolean, boolean
 import pandas as pd
 import numpy as np
 from sklearn.decomposition import FastICA
@@ -11,12 +12,15 @@ class EmeDecomposition():
     def __init__(self, 
                  n_motor_unit: int,
                  n_delayed: int=8,
+                 threshold_sil: float=0.8,
                  random_state: int=None,
                  max_iter: int=200,
                  tol: float=1e-4,
-                 cashe: str or None=None):
+                 cashe: str or None=None,
+                 flag_sil: bool=True):
         self.n_motor_unit = n_motor_unit
         self.n_delayed = n_delayed
+        self.threshold_sil = threshold_sil
         self.random_state = random_state
         self._FastICA = FastICA(n_components=n_motor_unit,
                                 random_state=self.random_state,
@@ -33,37 +37,50 @@ class EmeDecomposition():
             if not os.path.exists(self.cashe):
                 os.mkdir(self.cashe)
         
-    def fit(self, emg_raw, cashe_name='all', flag_return=False):
-        # preprocess
-        emg_centered = self._centering(emg_raw)
-        # fastica
-        self._cashe_fastica(emg_centered, cashe_name)
-        emg_mu = self._FastICA.transform(emg_centered)
-        # peak detection
-        emg_mu_squared = np.square(emg_mu)
-        spike_trains = self._EmgMu2spikeTrain(emg_mu_squared)
-        # calculate SIL
-        self.valid_index_mu_, self.list_sil_ = self._cashe_sil(emg_mu_squared, spike_trains, cashe_name)
-        # valid data
-        if flag_return:
-            st_valid = spike_trains[:, self.valid_index_mu_]
-            emg_mu_valid = emg_mu_squared[:, self.valid_index_mu_]
-            return st_valid, emg_mu_valid
+        self.flag_sil = flag_sil
+        
+    def fit(self, emg_raw, cashe_name='all', _transform=False):
+        emg_preprocessed = self._preprocess(emg_raw)
+        return self._decomposition(emg_preprocessed, cashe_name, _fit=True, _transform=_transform)
         
     def transform(self, emg_raw):
-        # preprocess
-        emg_centered = self._centering(emg_raw)
-        emg_mu = self._FastICA.transform(emg_centered)
-        # peak detection
-        emg_mu_squared = np.square(emg_mu)
-        spike_trains = self._EmgMu2spikeTrain(emg_mu_squared)
-        # valid data
-        st_valid = spike_trains[:, self.valid_index_mu_]
-        emg_mu_valid = emg_mu_squared[:, self.valid_index_mu_]
-        return st_valid, emg_mu_valid
+        emg_preprocessed = self._preprocess(emg_raw)
+        return self._decomposition(emg_preprocessed, cashe_name=None, _fit=False, _transform=True)
     
-    def fit_transfrom(self, emg_raw, cashe_name='all'):
-        return self.fit(emg_raw, cashe_name=cashe_name, flag_return=True)
+    def _preprocess(self, emg_raw):
+        # extend
+        emg_extended = self._extend_emg(emg_raw)
+        # preprocess
+        emg_centered = self._centering(emg_extended)
+        return emg_centered
+    
+    def _decomposition(self, emg_preprocessed, cashe_name, _fit=True, _transform=True):
+        # fastica
+        if _fit:
+            self._cashe_fastica(emg_preprocessed, cashe_name)
+        emg_mu = self._FastICA.transform(emg_preprocessed)
+        # peak detection
+        if self.flag_sil or _transform:
+            emg_mu_squared = np.square(emg_mu)
+            spike_trains = self._EmgMu2spikeTrain(emg_mu_squared)
+        # calculate SIL
+        if self.flag_sil and _fit:
+            self.valid_index_mu_, self.list_sil_ = self._cashe_sil(emg_mu_squared, spike_trains, cashe_name)
+        # valid data
+        if _transform:
+            if not(self.flag_sil):
+                return emg_mu, spike_trains
+            else:
+                st_valid = spike_trains[:, self.valid_index_mu_]
+                emg_mu_valid = emg_mu[:, self.valid_index_mu_]
+                return st_valid, emg_mu_valid
+    
+    def fit_transform(self, emg_raw, cashe_name='all'):
+        return self.fit(emg_raw, cashe_name=cashe_name, _transform=True)
+    
+    def _extend_emg(self, emg_raw):
+        df_emg_raw = pd.DataFrame(emg_raw)
+        return pd.concat([df_emg_raw] + [df_emg_raw.shift(-x) for x in range(self.n_delayed)], axis=1).dropna()
     
     
     def _cashe_fastica(self, emg, cashe_name):
@@ -83,7 +100,7 @@ class EmeDecomposition():
         if self.cashe is not None:
             filepath = self.cashe + '/' + str(cashe_name) + '_sil.json' 
             if not(os.path.exists(filepath)):
-                valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
+                valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains, self.threshold_sil)
                 d= {'valid_index_mu': valid_index_mu, 'list_sil': list_sil}
                 with open(filepath, 'w') as f:
                     json.dump(d, f, indent=4)
@@ -92,7 +109,7 @@ class EmeDecomposition():
                     d = json.load(f)
                 valid_index_mu, list_sil = d['valid_index_mu'], d['list_sil']
         else:
-            valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains)
+            valid_index_mu, list_sil = self._sil(emg_mu_squared, spike_trains, self.threshold_sil)
             
         return valid_index_mu, list_sil
             
@@ -119,18 +136,14 @@ class EmeDecomposition():
         
         return spike_trains * pre_diff.values * post_diff.values
     
-    def _sil(self, emg_squared, spike_trains, thre_sil=0.75, flag_print=False):
+    def _sil(self, emg_squared, spike_trains, thre_sil):
         list_sil = []
         for i in range(emg_squared.shape[1]):
             # ignore mu that has no spike trains
             if np.unique(spike_trains[:, i]).shape[0] != 2:
-                if flag_print:
-                    print('mu {} has no spike trains.'.format(i))
                 list_sil.append(0)
             else:
                 _sil = silhouette_score(emg_squared[:, [i]], spike_trains[:, i], random_state=self.random_state)
-                if flag_print:
-                    print('mu {}: {}'.format(i, _sil))
                 list_sil.append(_sil)
                 
         return np.where(np.array(list_sil) >= thre_sil)[0].tolist(), list_sil
