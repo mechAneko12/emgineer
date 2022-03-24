@@ -7,7 +7,7 @@ import os
 import pickle
 import json
 
-class EmeDecomposition():
+class EmgDecomposition():
     def __init__(self, 
                  n_motor_unit: int,
                  n_delayed: int=8,
