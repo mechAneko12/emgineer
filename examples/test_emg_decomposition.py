@@ -1,7 +1,7 @@
 import emgineer
 import numpy as np
 
-est = emgineer.EmeDecomposition(n_motor_unit=40, random_state=0)
+est = emgineer.EmgDecomposition(n_motor_unit=40, random_state=0)
 
 np.random.seed(0)
 emg_raw = np.random.normal(size=(1000, 50))
