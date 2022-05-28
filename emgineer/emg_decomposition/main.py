@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.decomposition import FastICA
+from sklearn.decomposition import FastICA, PCA
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import os
@@ -16,7 +16,8 @@ class EmgDecomposition():
                  max_iter: int=200,
                  tol: float=1e-4,
                  cashe: str or None=None,
-                 flag_sil: bool=True):
+                 flag_sil: bool=True,
+                 flag_pca: bool=False):
         self.n_motor_unit = n_motor_unit
         self.n_delayed = n_delayed
         self.threshold_sil = threshold_sil
@@ -37,6 +38,9 @@ class EmgDecomposition():
                 os.mkdir(self.cashe)
         
         self.flag_sil = flag_sil
+        self.flag_pca = flag_pca
+        if self.flag_pca:
+            self._PCA = PCA(n_components=n_motor_unit)
         
     def fit(self, emg_raw, cashe_name='all', _transform=False):
         emg_preprocessed = self._preprocess(emg_raw)
@@ -54,6 +58,11 @@ class EmgDecomposition():
         return emg_centered
     
     def _decomposition(self, emg_preprocessed, cashe_name, _fit=True, _transform=True):
+        # pca
+        if self.flag_pca:
+            if _fit:
+                self._cashe_pca(emg_preprocessed, cashe_name)
+            emg_preprocessed = self._PCA.transform(emg_preprocessed)
         # fastica
         if _fit:
             self._cashe_fastica(emg_preprocessed, cashe_name)
@@ -81,6 +90,19 @@ class EmgDecomposition():
         df_emg_raw = pd.DataFrame(emg_raw)
         return pd.concat([df_emg_raw] + [df_emg_raw.shift(-x) for x in range(self.n_delayed)], axis=1).dropna()
     
+    
+    def _cashe_pca(self, emg, cashe_name):
+        if self.cashe is not None:
+            filepath = self.cashe + '/' + str(cashe_name) + '_pca.pickle' 
+            if not(os.path.exists(filepath)):
+                self._PCA.fit(emg)
+                with open(filepath, 'wb') as f:
+                    pickle.dump(self._PCA, f)
+            else:
+                with open(filepath, 'rb') as f:
+                    self._PCA = pickle.load(f)
+        else:
+            self._PCA.fit(emg)
     
     def _cashe_fastica(self, emg, cashe_name):
         if self.cashe is not None:
