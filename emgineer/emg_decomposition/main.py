@@ -22,10 +22,15 @@ class EmgDecomposition():
         self.n_delayed = n_delayed
         self.threshold_sil = threshold_sil
         self.random_state = random_state
+        if flag_pca:
+            ica_whiten = False
+        else:
+            ica_whiten = True
         self._FastICA = FastICA(n_components=n_motor_unit,
                                 random_state=self.random_state,
                                 max_iter=max_iter,
                                 tol=tol,
+                                whiten=ica_whiten,
                                 fun='cube',
                                 algorithm='deflation'
                                 )
@@ -40,7 +45,7 @@ class EmgDecomposition():
         self.flag_sil = flag_sil
         self.flag_pca = flag_pca
         if self.flag_pca:
-            self._PCA = PCA(n_components=n_motor_unit)
+            self._PCA = PCA(n_components=n_motor_unit, whiten=True)
         
     def fit(self, emg_raw, cashe_name='all', _transform=False):
         emg_preprocessed = self._preprocess(emg_raw)
