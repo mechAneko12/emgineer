@@ -45,7 +45,9 @@ class EmgDecomposition():
         self.flag_sil = flag_sil
         self.flag_pca = flag_pca
         if self.flag_pca:
-            self._PCA = PCA(n_components=n_motor_unit, whiten=True)
+            self._PCA = PCA(n_components=n_motor_unit,
+                            random_state=self.random_state,
+                            whiten=True)
         
     def fit(self, emg_raw, cashe_name='all', _transform=False):
         emg_preprocessed = self._preprocess(emg_raw)
