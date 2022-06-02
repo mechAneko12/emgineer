@@ -82,7 +82,7 @@ class EmgDecomposition():
         # valid data
         if _transform:
             if not(self.flag_sil):
-                return emg_mu, spike_trains
+                return spike_trains, emg_mu
             else:
                 st_valid = spike_trains[:, self.valid_index_mu_]
                 emg_mu_valid = emg_mu[:, self.valid_index_mu_]
