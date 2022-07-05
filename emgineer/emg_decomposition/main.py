@@ -30,7 +30,7 @@ class EmgDecomposition():
                                 random_state=self.random_state,
                                 max_iter=max_iter,
                                 tol=tol,
-                                whiten=ica_whiten,
+                                # whiten=ica_whiten,
                                 fun='cube',
                                 algorithm='deflation'
                                 )
@@ -168,6 +168,7 @@ class EmgDecomposition():
         list_sil = []
         for i in range(emg_squared.shape[1]):
             # ignore mu that has no spike trains
+            print(i)
             if np.unique(spike_trains[:, i]).shape[0] != 2:
                 list_sil.append(0)
             else:
