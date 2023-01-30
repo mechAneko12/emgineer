@@ -17,7 +17,8 @@ class EmgDecomposition():
                  tol: float=1e-4,
                  cashe: str or None=None,
                  flag_sil: bool=True,
-                 flag_pca: bool=False):
+                 flag_pca: bool=False,
+                 cashe_kmeans=False):
         self.n_motor_unit = n_motor_unit
         self.n_delayed = n_delayed
         self.threshold_sil = threshold_sil
@@ -48,6 +49,10 @@ class EmgDecomposition():
             self._PCA = PCA(n_components=n_motor_unit,
                             random_state=self.random_state,
                             whiten=True)
+        
+        self._cashe_kmeans = cashe_kmeans
+        if not(self.cashe) and self._cashe_kmeans:
+            raise NotImplementedError
         
     def fit(self, emg_raw, cashe_name='all', _transform=False):
         emg_preprocessed = self._preprocess(emg_raw)
@@ -144,15 +149,23 @@ class EmgDecomposition():
     def _EmgMu2spikeTrain(self, emg_squared):
         spike_trains = np.zeros_like(emg_squared)
         for i in range(emg_squared.shape[1]):
-            _kmeans = KMeans(n_clusters=2, max_iter=10000, random_state=self.random_state)
-            _kmeans.fit(emg_squared[:, [i]])
+            filepath = self.cashe + f'/kmeans_{str(i)}.pickle' 
+            if self.cashe is not None:
+                if not(os.path.exists(filepath)) or not(self._cashe_kmeans):
+                    _kmeans = KMeans(n_clusters=2, max_iter=10000, random_state=self.random_state)
+                    _kmeans.fit(emg_squared[:, [i]])
+                    with open(filepath, 'wb') as f:
+                        pickle.dump(_kmeans, f)
+                else:
+                    with open(filepath, 'rb') as f:
+                        _kmeans = pickle.load(f)
             
             # sort by cluster centers
             idx = np.argsort(_kmeans.cluster_centers_.sum(axis=1))
             flag = np.zeros_like(idx)
             flag[idx] = np.arange(len(idx))
             
-            spike_trains[:, i] = flag[_kmeans.labels_]
+            spike_trains[:, i] = flag[np.argmin(_kmeans.transform(emg_squared[:, [i]]), axis=1)]
         spike_trains_processsed = self._spike_post_process(emg_squared, spike_trains)
         return spike_trains_processsed
 
